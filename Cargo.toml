@@ -1,0 +1,31 @@
+[package]
+name = "wim-parser"
+version = "0.1.0"
+authors = ["junjiangao <junjiangao@github.com>"]
+edition = "2021"
+description = "A Rust library for parsing Windows Imaging (WIM) files"
+license = "MIT"
+repository = "https://github.com/junjiangao/wim-parser"
+homepage = "https://github.com/junjiangao/wim-parser"
+documentation = "https://docs.rs/wim-parser"
+readme = "README.md"
+keywords = ["wim", "windows", "imaging", "parser", "archive"]
+categories = ["parsing", "filesystem"]
+
+[dependencies]
+anyhow = "1.0"
+quick-xml = "0.38"
+
+# 可选的日志功能
+tracing = { version = "0.1", optional = true }
+
+[features]
+default = ["logging"]
+logging = ["tracing"]
+
+[dev-dependencies]
+tracing-subscriber = "0.3"
+
+[[example]]
+name = "basic_usage"
+required-features = ["logging"]
