@@ -28,6 +28,7 @@ benchmarking = []
 [dev-dependencies]
 tracing-subscriber = "0.3"
 criterion = "0.5"
+tempfile = "3.0"
 
 [[example]]
 name = "basic_usage"

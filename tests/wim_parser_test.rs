@@ -30,7 +30,7 @@ fn test_parse_arch_from_xml() {
 
     for (xml, expected) in test_cases {
         let result = parser.parse_arch_from_xml(xml);
-        assert_eq!(result, expected, "测试XML: {}", xml);
+        assert_eq!(result, expected, "测试XML: {xml}");
     }
 }
 
@@ -133,14 +133,13 @@ fn test_version_extraction() {
         let xml = format!(
             r#"<IMAGE INDEX="1">
             <WINDOWS><ARCH>9</ARCH></WINDOWS>
-            <DISPLAYNAME>{}</DISPLAYNAME>
-            <NAME>{}</NAME>
-        </IMAGE>"#,
-            name, description
+            <DISPLAYNAME>{name}</DISPLAYNAME>
+            <NAME>{description}</NAME>
+        </IMAGE>"#
         );
 
         let result = parser.parse_single_image_xml(&xml).unwrap();
-        assert_eq!(result.version, expected_version, "测试版本提取: {}", name);
+        assert_eq!(result.version, expected_version, "测试版本提取: {name}");
     }
 }
 

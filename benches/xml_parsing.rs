@@ -1,6 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::fs::File;
-use std::io::Read;
 use wim_parser::WimParser;
 
 /// 创建测试用的XML数据（模拟真实的WIM XML内容）
@@ -53,7 +52,7 @@ fn create_test_xml_data(image_count: usize) -> Vec<u8> {
     for i in 2..=image_count {
         xml_content.push_str(&format!(
             r#"
-    <IMAGE INDEX="{}">
+    <IMAGE INDEX="{i}">
         <DIRCOUNT>25000</DIRCOUNT>
         <FILECOUNT>120000</FILECOUNT>
         <TOTALBYTES>20000000000</TOTALBYTES>
@@ -62,12 +61,11 @@ fn create_test_xml_data(image_count: usize) -> Vec<u8> {
             <PRODUCTNAME>Microsoft® Windows® Operating System</PRODUCTNAME>
             <EDITIONID>Professional</EDITIONID>
         </WINDOWS>
-        <DISPLAYNAME>Windows 11 专业版 {}</DISPLAYNAME>
-        <DISPLAYDESCRIPTION>Windows 11 专业版 {}</DISPLAYDESCRIPTION>
-        <NAME>Windows 11 Pro {}</NAME>
-        <DESCRIPTION>Windows 11 Pro {}</DESCRIPTION>
-    </IMAGE>"#,
-            i, i, i, i, i
+        <DISPLAYNAME>Windows 11 专业版 {i}</DISPLAYNAME>
+        <DISPLAYDESCRIPTION>Windows 11 专业版 {i}</DISPLAYDESCRIPTION>
+        <NAME>Windows 11 Pro {i}</NAME>
+        <DESCRIPTION>Windows 11 Pro {i}</DESCRIPTION>
+    </IMAGE>"#
         ));
     }
 
@@ -159,7 +157,7 @@ fn bench_utf16_decoding(c: &mut Criterion) {
 
 /// 内存使用基准测试
 fn bench_memory_allocation(c: &mut Criterion) {
-    let xml_data = create_test_xml_data(20);
+    let _xml_data = create_test_xml_data(20);
 
     let mut group = c.benchmark_group("memory_allocation");
 
@@ -168,7 +166,7 @@ fn bench_memory_allocation(c: &mut Criterion) {
         b.iter(|| {
             let mut strings = Vec::new();
             for i in 0..1000 {
-                strings.push(format!("test_string_{}", i));
+                strings.push(format!("test_string_{i}"));
             }
             black_box(strings)
         })
