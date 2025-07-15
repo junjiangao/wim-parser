@@ -1,8 +1,45 @@
 use anyhow::{Context, Result};
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 use tracing::{debug, info};
+
+// 性能优化导入
+use encoding_rs::UTF_16LE;
+use quick_xml::events::Event;
+use quick_xml::Reader;
+
+/// 字符串池用于减少内存分配
+#[derive(Debug)]
+struct StringPool {
+    pool: Vec<String>,
+    index: usize,
+}
+
+#[allow(dead_code)]
+impl StringPool {
+    fn new() -> Self {
+        Self {
+            pool: Vec::with_capacity(32), // 预分配32个字符串
+            index: 0,
+        }
+    }
+
+    fn get_string(&mut self) -> &mut String {
+        if self.index >= self.pool.len() {
+            self.pool.push(String::with_capacity(256)); // 预分配容量
+        }
+        let string = &mut self.pool[self.index];
+        string.clear();
+        self.index += 1;
+        string
+    }
+
+    fn reset(&mut self) {
+        self.index = 0;
+        // 保留字符串对象，只重置索引
+    }
+}
 
 /// WIM 文件头结构体 (WIMHEADER_V1_PACKED)
 /// 总大小：204 字节
@@ -109,25 +146,109 @@ pub struct ImageInfo {
     pub architecture: Option<String>,
 }
 
-/// WIM 文件解析器
-pub struct WimParser {
-    file: File,
-    header: Option<WimHeader>,
-    images: Vec<ImageInfo>,
+#[allow(dead_code)]
+impl ImageInfo {
+    /// 创建新的ImageInfo实例（用于优化的XML解析）
+    pub fn new_with_index(index: u32) -> Self {
+        Self {
+            index,
+            name: String::new(),
+            description: String::new(),
+            dir_count: 0,
+            file_count: 0,
+            total_bytes: 0,
+            creation_time: None,
+            last_modification_time: None,
+            version: None,
+            architecture: None,
+        }
+    }
+
+    /// 高效设置字段值（避免多次字符串分配）
+    pub fn set_field(&mut self, tag: &str, value: &str) {
+        match tag {
+            "DISPLAYNAME" => self.name = value.to_string(),
+            "DISPLAYDESCRIPTION" => self.description = value.to_string(),
+            "DIRCOUNT" => self.dir_count = value.parse().unwrap_or(0),
+            "FILECOUNT" => self.file_count = value.parse().unwrap_or(0),
+            "TOTALBYTES" => self.total_bytes = value.parse().unwrap_or(0),
+            "ARCH" => {
+                self.architecture = match value {
+                    "0" => Some("x86".to_string()),
+                    "9" => Some("x64".to_string()),
+                    "5" => Some("ARM".to_string()),
+                    "12" => Some("ARM64".to_string()),
+                    _ => None,
+                };
+            }
+            _ => {} // 忽略其他标签
+        }
+    }
+
+    /// 根据名称和描述推断版本和架构信息
+    pub fn infer_version_and_arch(&mut self) {
+        let combined_text = format!("{} {}", self.name, self.description).to_lowercase();
+
+        // 推断版本信息
+        if self.version.is_none() {
+            self.version = if combined_text.contains("windows 11") {
+                Some("Windows 11".to_string())
+            } else if combined_text.contains("windows 10") {
+                Some("Windows 10".to_string())
+            } else if combined_text.contains("windows server 2022") {
+                Some("Windows Server 2022".to_string())
+            } else if combined_text.contains("windows server 2019") {
+                Some("Windows Server 2019".to_string())
+            } else if combined_text.contains("windows server") {
+                Some("Windows Server".to_string())
+            } else if combined_text.contains("windows") {
+                Some("Windows".to_string())
+            } else {
+                None
+            };
+        }
+
+        // 推断架构信息（仅在未从XML ARCH标签获取时）
+        if self.architecture.is_none() {
+            self.architecture = if combined_text.contains("x64") || combined_text.contains("amd64")
+            {
+                Some("x64".to_string())
+            } else if combined_text.contains("x86") {
+                Some("x86".to_string())
+            } else if combined_text.contains("arm64") {
+                Some("ARM64".to_string())
+            } else {
+                None
+            };
+        }
+    }
 }
 
+/// WIM 文件解析器
+#[allow(dead_code)]
+pub struct WimParser {
+    file: BufReader<File>,
+    header: Option<WimHeader>,
+    images: Vec<ImageInfo>,
+    string_pool: StringPool,
+}
+
+#[allow(dead_code)]
 impl WimParser {
     /// 创建新的 WIM 解析器
     pub fn new<P: AsRef<Path>>(wim_path: P) -> Result<Self> {
         let file = File::open(wim_path.as_ref())
             .with_context(|| format!("无法打开 WIM 文件: {}", wim_path.as_ref().display()))?;
 
+        let buffered_file = BufReader::with_capacity(64 * 1024, file); // 64KB缓冲区
+
         debug!("创建 WIM 解析器: {}", wim_path.as_ref().display());
 
         Ok(Self {
-            file,
+            file: buffered_file,
             header: None,
-            images: Vec::new(),
+            images: Vec::with_capacity(8), // 预分配镜像容量
+            string_pool: StringPool::new(),
         })
     }
 
@@ -136,9 +257,10 @@ impl WimParser {
     #[allow(dead_code)]
     pub fn new_for_test(file: File) -> Self {
         Self {
-            file,
+            file: BufReader::new(file),
             header: None,
-            images: Vec::new(),
+            images: Vec::with_capacity(8),
+            string_pool: StringPool::new(),
         }
     }
 
@@ -312,6 +434,106 @@ impl WimParser {
         // 解析 XML 镜像信息
         self.parse_xml_images(&xml_string)?;
 
+        Ok(())
+    }
+
+    /// 优化的XML解析函数 - 使用proper XML parser和高效UTF-16解码
+    fn parse_xml_data_optimized(&mut self, xml_buffer: &[u8]) -> Result<()> {
+        // 检查基本格式
+        if xml_buffer.len() < 2 {
+            return Err(anyhow::anyhow!("XML 数据太短"));
+        }
+
+        // 检查 BOM (0xFEFF)
+        if xml_buffer[0] != 0xFF || xml_buffer[1] != 0xFE {
+            return Err(anyhow::anyhow!("无效的 XML 数据 BOM"));
+        }
+
+        // 使用encoding_rs进行高效UTF-16解码
+        let (xml_string, _, had_errors) = UTF_16LE.decode(&xml_buffer[2..]);
+        if had_errors {
+            return Err(anyhow::anyhow!("UTF-16解码过程中发现错误"));
+        }
+
+        debug!("XML 数据长度: {} 字符", xml_string.len());
+
+        // 使用quick-xml进行解析
+        self.parse_xml_images_optimized(&xml_string)?;
+
+        Ok(())
+    }
+
+    /// 优化的XML镜像解析函数 - 使用quick-xml
+    fn parse_xml_images_optimized(&mut self, xml_content: &str) -> Result<()> {
+        self.images.clear();
+
+        let mut reader = Reader::from_str(xml_content);
+        reader.config_mut().trim_text(true);
+
+        let mut current_image: Option<ImageInfo> = None;
+        let mut current_tag = String::new();
+        let mut in_windows_section = false;
+
+        loop {
+            match reader.read_event() {
+                Ok(Event::Start(ref e)) => {
+                    match e.name().as_ref() {
+                        b"IMAGE" => {
+                            // 提取INDEX属性
+                            for attr in e.attributes().flatten() {
+                                if attr.key.as_ref() == b"INDEX" {
+                                    if let Ok(index_str) = std::str::from_utf8(&attr.value) {
+                                        if let Ok(index) = index_str.parse::<u32>() {
+                                            current_image = Some(ImageInfo::new_with_index(index));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        b"WINDOWS" => {
+                            in_windows_section = true;
+                        }
+                        tag => {
+                            current_tag = String::from_utf8_lossy(tag).into_owned();
+                        }
+                    }
+                }
+                Ok(Event::Text(e)) => {
+                    if let Some(ref mut image) = current_image {
+                        // 获取文本内容
+                        let text = std::str::from_utf8(&e)?;
+
+                        // 特殊处理WINDOWS节中的ARCH标签
+                        if in_windows_section && current_tag == "ARCH" {
+                            image.set_field("ARCH", text);
+                        } else if !in_windows_section {
+                            // 其他标签在非WINDOWS节中处理
+                            image.set_field(&current_tag, text);
+                        }
+                    }
+                }
+                Ok(Event::End(ref e)) => {
+                    match e.name().as_ref() {
+                        b"IMAGE" => {
+                            if let Some(mut image) = current_image.take() {
+                                // 推断版本和架构信息（如果尚未设置）
+                                image.infer_version_and_arch();
+                                self.images.push(image);
+                            }
+                        }
+                        b"WINDOWS" => {
+                            in_windows_section = false;
+                        }
+                        _ => {}
+                    }
+                }
+                Ok(Event::Eof) => break,
+                Err(e) => return Err(anyhow::anyhow!("XML解析错误: {}", e)),
+                _ => {}
+            }
+        }
+
+        info!("优化解析完成：成功解析 {} 个镜像的信息", self.images.len());
         Ok(())
     }
 
@@ -741,5 +963,24 @@ impl std::fmt::Display for WindowsInfo {
         write!(f, " | 镜像数量: {}", self.image_count)?;
         write!(f, " | 总大小: {} MB", self.total_size / (1024 * 1024))?;
         Ok(())
+    }
+}
+
+// 基准测试和测试辅助函数
+#[cfg(any(test, feature = "benchmarking"))]
+impl WimParser {
+    /// 测试用：直接解析XML数据（当前实现）
+    pub fn parse_xml_data_for_bench(&mut self, xml_buffer: &[u8]) -> Result<()> {
+        self.parse_xml_data(xml_buffer)
+    }
+
+    /// 测试用：直接解析XML数据（优化实现）
+    pub fn parse_xml_data_optimized_for_bench(&mut self, xml_buffer: &[u8]) -> Result<()> {
+        self.parse_xml_data_optimized(xml_buffer)
+    }
+
+    /// 测试用：切换到优化解析模式
+    pub fn use_optimized_parsing(&mut self, xml_buffer: &[u8]) -> Result<()> {
+        self.parse_xml_data_optimized(xml_buffer)
     }
 }

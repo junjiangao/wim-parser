@@ -15,6 +15,7 @@ categories = ["parsing", "filesystem"]
 [dependencies]
 anyhow = "1.0"
 quick-xml = "0.38"
+encoding_rs = "0.8"  # 高效UTF-16解码
 
 # 可选的日志功能
 tracing = { version = "0.1", optional = true }
@@ -22,10 +23,20 @@ tracing = { version = "0.1", optional = true }
 [features]
 default = ["logging"]
 logging = ["tracing"]
+benchmarking = []
 
 [dev-dependencies]
 tracing-subscriber = "0.3"
+criterion = "0.5"
 
 [[example]]
 name = "basic_usage"
 required-features = ["logging"]
+
+[[example]]
+name = "performance_comparison"
+required-features = ["benchmarking"]
+
+[[bench]]
+name = "xml_parsing"
+harness = false
