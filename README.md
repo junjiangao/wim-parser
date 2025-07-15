@@ -3,6 +3,8 @@
 [![Crates.io](https://img.shields.io/crates/v/wim-parser.svg)](https://crates.io/crates/wim-parser)
 [![Documentation](https://docs.rs/wim-parser/badge.svg)](https://docs.rs/wim-parser)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Build Status](https://github.com/junjiangao/wim-parser/workflows/Build/badge.svg)](https://github.com/junjiangao/wim-parser/actions)
+[![Release](https://github.com/junjiangao/wim-parser/workflows/Release%20and%20Publish/badge.svg)](https://github.com/junjiangao/wim-parser/actions)
 
 A Rust library for parsing Windows Imaging (WIM) files.
 
@@ -137,6 +139,39 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Release Process
+
+This project uses automated release workflows for publishing to both GitHub Releases and crates.io.
+
+### For Maintainers
+
+1. **Update version in `Cargo.toml`**
+2. **Create and push a version tag**:
+   ```bash
+   git tag v0.1.1
+   git push origin v0.1.1
+   ```
+3. **GitHub Actions will automatically**:
+   - Run comprehensive tests and validation
+   - Verify version consistency between Git tag and `Cargo.toml`
+   - Create a GitHub Release with auto-generated changelog
+   - Publish to crates.io (requires manual approval in GitHub Actions)
+
+### Manual Release Trigger
+
+You can also trigger a release manually using GitHub Actions:
+1. Go to the [Actions tab](https://github.com/junjiangao/wim-parser/actions)
+2. Select "Release and Publish" workflow
+3. Click "Run workflow" and specify the version
+
+### Release Requirements
+
+- Version must follow semantic versioning (e.g., `v0.1.0`)
+- Git tag version must match `Cargo.toml` version
+- All tests must pass
+- Code must be properly formatted and pass clippy checks
+- Package must build successfully
 
 ## Changelog
 
