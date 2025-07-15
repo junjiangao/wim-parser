@@ -1,6 +1,6 @@
 // 性能对比示例
-use std::time::Instant;
 use std::io::Write;
+use std::time::Instant;
 use wim_parser::WimParser;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
