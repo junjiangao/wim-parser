@@ -187,7 +187,7 @@ jobs:
     - name: Publish to crates.io
       run: |
         echo "Publishing wim-parser version ${{ needs.verify.outputs.cargo_version }} to crates.io"
-        cargo publish --token ${{ secrets.CRATES_TOKEN }}
+        cargo publish --token ${{ secrets.CRATES_TOKEN }} --allow-dirty
         echo "✅ Successfully published to crates.io!"
 
     - name: Verify publication
