@@ -175,6 +175,26 @@ You can also trigger a release manually using GitHub Actions:
 
 ## Changelog
 
+### 0.1.1
+
+- **🔧 Performance & Quality Improvements**
+  - Enhanced XML parsing performance with optimized string handling
+  - Improved memory allocation patterns for better efficiency
+  - Fixed all clippy warnings for better code quality
+  - Optimized format string usage throughout codebase
+
+- **📚 Documentation & Examples**
+  - Enhanced performance comparison examples with better benchmarking
+  - Improved API documentation with clearer usage examples
+  - Added comprehensive error handling examples
+  - Better code organization and readability
+
+- **🛠️ Development Experience**
+  - Enhanced test coverage and reliability
+  - Improved benchmark suite with memory allocation tests
+  - Better error messages and debugging information
+  - Code quality improvements for maintainability
+
 ### 0.1.0
 
 - Initial release
